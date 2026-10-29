@@ -5,11 +5,11 @@ A major part of project as well, was to write a algorithm for the offline contex
 ## Contributors
 This project was conducted by:
 
-Dinand Wesdorp (1924354)
-Gijs Vermeulen (9781269)
-Maksim Holly  (4920694)
-Mathis Wierdeier  (8268487)
-Sybren van der Meijden  (2077523)
+Dinand Wesdorp (1924354) __
+Gijs Vermeulen (9781269) __
+Maksim Holly  (4920694) __
+Mathis Wierdeier  (8268487) __
+Sybren van der Meijden  (2077523) __
 
 ## Installation
 
