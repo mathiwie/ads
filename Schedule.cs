@@ -13,8 +13,15 @@ namespace OfflineAlgorithm
         // (they are sorted by smallest release time)
         public JobState[] jobs;
 
-        public int active_job_index = -1; // to track if the schedule is currently assigned to a job, we store its index in the jobs list
+        // the current schedule's
         public float time, cost = 0f;
+
+        // to track if the schedule is currently assigned to a job, we store its index in the jobs list
+        public int active_job_index = -1; 
+        
+        // these execution fragments represent when and for how long we've worked on jobs
+        // (these are naturally sorted chronologically)
+        public List<ExecutionFragment> execution_fragments = []; 
 
         // derived data
         public bool isActive => active_job_index >= 0;
@@ -33,12 +40,13 @@ namespace OfflineAlgorithm
                 .ToArray();
         }
 
-        private Schedule(float t, float c, int aji, JobState[] js)
+        private Schedule(float t, float c, int aji, JobState[] js, List<ExecutionFragment> f)
         {
             time = t;
             cost = c;
             jobs = js;
             active_job_index = aji;
+            execution_fragments = f;
         }
 
         // calculate the absolute minimum lower bound of cost that a valid schedule
@@ -54,7 +62,6 @@ namespace OfflineAlgorithm
             foreach (JobState unfinished_job in unfinished_jobs)
                 total += float.Max(this.time, unfinished_job.data.release_time) + unfinished_job.remaining_processing_time;
 
-            Debug.WriteLine($"lower bound: {total}");
             return total;
         }
 
@@ -72,14 +79,15 @@ namespace OfflineAlgorithm
         // (from this time on)
         public (float, List<ExecutionFragment>) CalculateUpperBound()
         {
+            // use the current cost as base
             float total = this.cost;
+
+            // we want to make future decisions without changing this schedule's time
             float t = this.time;
+
             List<JobState> unfinished = this.unfinished_jobs.ToList(); // copy
 
-            var solution = jobs
-                .SelectMany(j => j.executionFragments)
-                .OrderBy(f => f.start)
-                .ToList();
+            List<ExecutionFragment> solution = new(execution_fragments);
 
 
             // if there is a job busy right now, finish that first
@@ -105,10 +113,10 @@ namespace OfflineAlgorithm
                 var waiting = unfinished.Where(j => j.data.release_time <= t);
                 if (waiting.Any())
                 {
-                    var shortest = waiting.MinBy(j => j.total_processing_time);
-
+                    var shortest = waiting.MinBy(j => j.remaining_processing_time);
                     float required_time = shortest.remaining_processing_time;
                     solution.Add(new ExecutionFragment(shortest.data.id, t, required_time));
+
                     // finish this job without interruption and fast forward the time to when
                     // this job is finished
                     t += required_time;
@@ -158,7 +166,7 @@ namespace OfflineAlgorithm
                     // if there is a new release coming up, we work until that or till the job is done
                     // but if there isnt we simply work till the job is done
                     float next_decision_time = isLast ? finish_time : float.Min(next_release_time, finish_time);
-                    Schedule newSchedule = DoJob(job.data.id, time, next_decision_time);
+                    Schedule newSchedule = Expand(time, next_decision_time, job.data.id, false);
                     schedules.Enqueue(newSchedule, newSchedule.CalculateLowerBound());
                 }
 
@@ -175,7 +183,7 @@ namespace OfflineAlgorithm
                     bool next_is_last = next_next_release_time < 0f;
                     float next_decision_time = next_is_last ? finish_time : float.Min(next_next_release_time, finish_time);
 
-                    Schedule newSchedule = DoJob(job.data.id, job.data.release_time, next_decision_time);
+                    Schedule newSchedule = Expand(job.data.release_time, next_decision_time, job.data.id, false);
                     schedules.Enqueue(newSchedule, newSchedule.CalculateLowerBound());
                 }
             }
@@ -199,7 +207,7 @@ namespace OfflineAlgorithm
                 float finish_time = time + active.remaining_processing_time;
                 float next_decision_time = isLast ? finish_time : float.Min(next_release_time, finish_time);
 
-                Schedule newSchedule = ContinueJob(next_decision_time);
+                Schedule newSchedule = Expand(time, next_decision_time, active.data.id, false);
                 schedules.Enqueue(newSchedule, newSchedule.CalculateLowerBound());
                 
 
@@ -212,80 +220,53 @@ namespace OfflineAlgorithm
                         finish_time = time + job.remaining_processing_time;
                         next_decision_time = isLast ? finish_time : float.Min(next_release_time, finish_time);
 
-                        Schedule newInterruptedSchedule = InterruptJob(job.data.id, next_decision_time);
+                        Schedule newInterruptedSchedule = Expand(time, next_decision_time, job.data.id, true);
                         schedules.Enqueue(newInterruptedSchedule, newInterruptedSchedule.CalculateLowerBound());
                     }
 
             }
         }
 
-        private Schedule ContinueJob(float next_decision_time)
+        private Schedule Expand(float start_time, float end_time, int job_id, bool interrupt) 
         {
-            float new_time = next_decision_time; // update time
-            int new_active_job_index = active_job_index; // we continue the same job
-            float new_cost = cost; // cost for now
-            JobState[] new_jobs = jobs.ToArray(); // copy
+            // we don't want to alter this schedule's job states while making the next schedule,
+            // so we copy the job states and alter the copy
+            JobState[] new_jobs = jobs.ToArray();
 
-            // now some values might need to be updated, we start with the job state of the job we continue
-            new_jobs[active_job_index] = new_jobs[active_job_index].Do(time, new_time - time); // we worked on the job for duration time
+            // if we are continuing an active job, the new active job index remains
+            // but otherwise we set the new job index to the one with the given id
+            int new_active_job_index;
+            if (isActive && !interrupt)
+                new_active_job_index = active_job_index;
+            else
+                new_active_job_index = Array.FindIndex(new_jobs, j => j.data.id == job_id);
 
-            // if the job is done, we will no longer have an active job and its finish time will be added to the cost 
-            if (new_jobs[active_job_index].isFinished)
-            {
-                new_active_job_index = -1;
-                new_cost += new_time;
-            }
 
-            return new Schedule(new_time, new_cost, new_active_job_index, new_jobs);
-        }
-        private Schedule InterruptJob(int next_job_id, float next_decision_time)
-        {
-            float new_time = next_decision_time; // update time
+            // if we are interrupting an active job, make sure to penalize
+            if (interrupt)
+                new_jobs[active_job_index].Interrupt();
 
-            JobState[] new_jobs = jobs.ToArray(); // copy
-            new_jobs[active_job_index].Interrupt(); // interrupt current job
+            // calculate the duration of time we work on the job
+            float duration = end_time - start_time;
 
-            int new_active_job_index = Array.FindIndex(new_jobs, j => j.data.id == next_job_id);
-            float new_cost = cost; // cost stays the same
+            // we also update the execution fragments by copying the current ones
+            // and then adding the new one corresponding to the job we do
+            List<ExecutionFragment> new_execution_fragments = new(execution_fragments);
+            new_execution_fragments.Add(new(job_id, start_time, duration));
 
-            // now some values might need to be updated, we start with the job state of new the job we continue/start
-            new_jobs[new_active_job_index] = new_jobs[new_active_job_index].Do(time, new_time - time); // we worked on the job for duration time
+            // since we'll actually perform a job for some time, its job state values need to be updated
+            new_jobs[new_active_job_index] = new_jobs[new_active_job_index].Do(duration);
 
-            // if the job is done, we will no longer have an active job and its finish time will be added to the cost 
+            // if the job is finished when after stop, we will no longer have an
+            // active job and the finish time will be added to the cost 
+            float extra_cost = 0f;
             if (new_jobs[new_active_job_index].isFinished)
             {
                 new_active_job_index = -1;
-                new_cost += new_time;
+                extra_cost = end_time;
             }
 
-            return new Schedule(new_time, new_cost, new_active_job_index, new_jobs);
+            return new Schedule(end_time, cost + extra_cost, new_active_job_index, new_jobs, new_execution_fragments);
         }
-        private Schedule DoJob(int next_job_id, float start_time, float end_time)
-        {
-            float new_time = end_time;                                                          // update time
-            JobState[] new_jobs = jobs.ToArray();                                               // copy
-            int new_active_job_index = Array.FindIndex(new_jobs, j => j.data.id == next_job_id);
-            float new_cost = cost;                                                              // cost stays the same
-
-            // now some values might need to be updated, we start with the job state of the job we continue
-            new_jobs[new_active_job_index] = new_jobs[new_active_job_index].Do(start_time, end_time - start_time); // we worked on the job for this duration
-
-            // if the job is done, we will no longer have an active job and its finish time will be added to the cost 
-            if (new_jobs[new_active_job_index].isFinished)
-            {
-                new_active_job_index = -1;
-                new_cost += new_time;
-            }
-
-            return new Schedule(new_time, new_cost, new_active_job_index, new_jobs);
-        }
-
-        public List<ExecutionFragment> GetChronologicalFragments()
-        {
-            return jobs
-                .SelectMany(j => j.executionFragments)
-                .OrderBy(f => f.start)
-                .ToList();
-        }
-    }
+    }  
 }

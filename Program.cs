@@ -52,13 +52,13 @@ namespace OfflineAlgorithm
                     // so if this is a finished schedule where (lower bound == cost) it means any other possible
                     // finished schedule has cost of at least this cost, so this is the optimal finished schedule
 
-                    solution = current.GetChronologicalFragments();
+                    solution = current.execution_fragments;
                     lowest_upper_bound = current.cost;
                     break;
                 }
             }
             Console.WriteLine();
-            Console.WriteLine(GiveOutput(solution));
+            ExecutionFragment.PrintSolution(solution);
             Console.WriteLine(lowest_upper_bound);
         }
 
@@ -76,33 +76,6 @@ namespace OfflineAlgorithm
                 jobs[i] = new JobData(i + 1, r, p, a);
             }
             return jobs;
-        }
-
-        private static string GiveOutput(List<ExecutionFragment> chronological_fragments) 
-        {
-            var merged = new List<ExecutionFragment>();
-
-            foreach (var fragment in chronological_fragments)
-            {
-                if (merged.Count > 0)
-                {
-                    var last = merged[^1];
-                    bool isSameJob = last.id == fragment.id;
-                    bool isContiguous = MathF.Abs(last.end - fragment.start) < 1e-5f;
-
-                    if (isSameJob && isContiguous)
-                    {
-                        // Extend the last fragment's duration instead of adding a new one
-                        merged[^1] = new ExecutionFragment(last.id, last.start, last.duration + fragment.duration);
-                        continue;
-                    }
-                }
-
-                merged.Add(fragment);
-            }
-
-            var lines = merged.Select(f => $"{f.id}, {f.start:F2}, {f.duration:F2}");
-            return string.Join("\n", lines);
         }
     }
 }
