@@ -6,13 +6,13 @@ using System.Threading.Tasks;
 
 namespace OfflineAlgorithm
 {
+    // this represents one fragment of work on a job in a schedule
     public class ExecutionFragment
     {
         public int id;
         public float start, duration;
         public float end => start + duration;
-
-        // this represents one fragment of work on a job in a schedule
+  
         public ExecutionFragment(int id, float start, float duration)
         {
             this.id = id;
