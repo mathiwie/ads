@@ -55,7 +55,7 @@ plt.plot(
 )
 
 plt.yscale("log")
-plt.xlabel("amount of jobs")
+plt.xlabel("number of jobs n")
 plt.ylabel("runtime in ms (log scale)")
 plt.grid()
 plt.legend()
