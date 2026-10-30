@@ -13,7 +13,10 @@ namespace OfflineAlgorithm
         {
             JobData[] jobs = ParseInput();
             var empty_schedule = new Schedule(jobs);
-    
+
+            // set timer
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+
             (float lowest_upper_bound, List<ExecutionFragment> solution) = empty_schedule.CalculateUpperBound();
             float lowest_lower_bound = empty_schedule.CalculateLowerBound();
 
@@ -57,9 +60,16 @@ namespace OfflineAlgorithm
                     break;
                 }
             }
+            // measure elapsed time
+            watch.Stop();
+            var elapsedMs = watch.ElapsedMilliseconds;
+
             Console.WriteLine();
             Console.WriteLine(GiveOutput(solution));
             Console.WriteLine(lowest_upper_bound);
+
+            Console.WriteLine();
+            Console.WriteLine($"Elapsed time: {elapsedMs} ms");
         }
 
         private static JobData[] ParseInput()
