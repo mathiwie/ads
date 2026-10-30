@@ -23,8 +23,6 @@ namespace OfflineAlgorithm
         public List<JobState> unfinished_jobs => jobs.Where(j => !j.isFinished).ToList();
         public List<JobState> waiting_jobs => jobs.Where(j => !j.isFinished && j.data.release_time <= time).ToList();
 
-        public float upperbound;
-
         // constructor for the inital (empty) schedule
         public Schedule(JobData[] jobs)
         {
@@ -33,8 +31,6 @@ namespace OfflineAlgorithm
                 .OrderBy(job => job.release_time)
                 .Select(j => new JobState(j))
                 .ToArray();
-
-            upperbound = CalculateUpperBound();
         }
 
         private Schedule(float t, float c, int aji, JobState[] js)
@@ -43,8 +39,6 @@ namespace OfflineAlgorithm
             cost = c;
             jobs = js;
             active_job_index = aji;
-
-            upperbound = CalculateUpperBound();
         }
 
         // calculate the absolute minimum lower bound of cost that a valid schedule
@@ -76,19 +70,24 @@ namespace OfflineAlgorithm
         // for our upper bound we select a schedule which performs all jobs
         // without interruptions and always picks the shortest available job
         // (from this time on)
-        //
-        // IMPORTANT: THIS MUTATES THE JOBS OF THE SCHEDULE, SHOULD BE FIXED!
-        public float CalculateUpperBound()
+        public (float, List<ExecutionFragment>) CalculateUpperBound()
         {
             float total = this.cost;
             float t = this.time;
             List<JobState> unfinished = this.unfinished_jobs.ToList(); // copy
+
+            var solution = jobs
+                .SelectMany(j => j.executionFragments)
+                .OrderBy(f => f.start)
+                .ToList();
+
 
             // if there is a job busy right now, finish that first
             if (isActive)
             {
                 var active = jobs[active_job_index];
                 float required_time = active.remaining_processing_time;
+                solution.Add(new ExecutionFragment(active.data.id, t, required_time));
 
                 // jump ahead to the time where this job is finished
                 t += required_time;
@@ -109,6 +108,7 @@ namespace OfflineAlgorithm
                     var shortest = waiting.MinBy(j => j.total_processing_time);
 
                     float required_time = shortest.remaining_processing_time;
+                    solution.Add(new ExecutionFragment(shortest.data.id, t, required_time));
                     // finish this job without interruption and fast forward the time to when
                     // this job is finished
                     t += required_time;
@@ -124,9 +124,7 @@ namespace OfflineAlgorithm
                 }
 
             }
-
-            Debug.WriteLine($"upper bound: {total}");
-            return total;
+            return (total, solution);
         }
 
 
@@ -142,7 +140,7 @@ namespace OfflineAlgorithm
         }
 
         // this function generates all reasonable next schedules which expand this one
-        public void GenerateNextSchedules(Queue<Schedule> schedules)
+        public void GenerateNextSchedules(PriorityQueue<Schedule, float> schedules)
         {
             float next_release_time = NextReleaseTime(time);
             bool isLast = NextReleaseTime(time) < 0f;
@@ -160,17 +158,8 @@ namespace OfflineAlgorithm
                     // if there is a new release coming up, we work until that or till the job is done
                     // but if there isnt we simply work till the job is done
                     float next_decision_time = isLast ? finish_time : float.Min(next_release_time, finish_time);
-                    schedules.Enqueue(DoJob(job.data.id, time, next_decision_time));
-
-                    /*  RESULTS IN WRONG ANSWERS SOMEHOW
                     Schedule newSchedule = DoJob(job.data.id, time, next_decision_time);
-
-                    // if this new schedule is more promising than the current one, add the schedule
-                     
-                    if (this.CalculateUpperBound() > newSchedule.CalculateLowerBound())
-                    {
-                        schedules.Enqueue(newSchedule);
-                    }*/
+                    schedules.Enqueue(newSchedule, newSchedule.CalculateLowerBound());
                 }
 
 
@@ -187,12 +176,7 @@ namespace OfflineAlgorithm
                     float next_decision_time = next_is_last ? finish_time : float.Min(next_next_release_time, finish_time);
 
                     Schedule newSchedule = DoJob(job.data.id, job.data.release_time, next_decision_time);
-
-                    // if this new schedule is more promising than the current one, add the sche
-                    if (upperbound > newSchedule.CalculateLowerBound())
-                    {
-                        schedules.Enqueue(newSchedule);
-                    }
+                    schedules.Enqueue(newSchedule, newSchedule.CalculateLowerBound());
                 }
             }
 
@@ -216,12 +200,8 @@ namespace OfflineAlgorithm
                 float next_decision_time = isLast ? finish_time : float.Min(next_release_time, finish_time);
 
                 Schedule newSchedule = ContinueJob(next_decision_time);
-
-                // if this new schedule is more promising than the current one, add the schedule
-                if (upperbound > newSchedule.CalculateLowerBound())
-                {
-                    schedules.Enqueue(newSchedule);
-                }
+                schedules.Enqueue(newSchedule, newSchedule.CalculateLowerBound());
+                
 
                 // next we consider interrupting to do a waiting job
                 // now the expanded schedules are all schedules that
@@ -233,12 +213,7 @@ namespace OfflineAlgorithm
                         next_decision_time = isLast ? finish_time : float.Min(next_release_time, finish_time);
 
                         Schedule newInterruptedSchedule = InterruptJob(job.data.id, next_decision_time);
-
-                        // if this new schedule is more promising than the current one, add the schedule
-                        if (upperbound > newSchedule.CalculateLowerBound())
-                        {
-                            schedules.Enqueue(newInterruptedSchedule);
-                        }
+                        schedules.Enqueue(newInterruptedSchedule, newInterruptedSchedule.CalculateLowerBound());
                     }
 
             }
@@ -305,17 +280,12 @@ namespace OfflineAlgorithm
             return new Schedule(new_time, new_cost, new_active_job_index, new_jobs);
         }
 
-        public void PrintChronologicalFragments()
+        public List<ExecutionFragment> GetChronologicalFragments()
         {
-            var sortedFragments = jobs
-                .SelectMany(j => j.executionFragments.Select(f => (JobId: j.data.id, Fragment: f)))
-                .OrderBy(x => x.Fragment.start);
-
-            Console.WriteLine();
-            foreach (var item in sortedFragments)
-            {
-                Console.WriteLine($"{item.JobId}, {item.Fragment.start}, {item.Fragment.duration}");
-            }
+            return jobs
+                .SelectMany(j => j.executionFragments)
+                .OrderBy(f => f.start)
+                .ToList();
         }
     }
 }

@@ -67,29 +67,13 @@ namespace OfflineAlgorithm
             data = previous_state.data;                                                             // static data is unchanged
             elapsed_processing_time = previous_state.elapsed_processing_time + added_work.duration; // elapse the work's processing time
             total_processing_time = previous_state.total_processing_time;                           // unchanged
-
-            if (previous_state.executionFragments.Length > 0)
-            {
-                executionFragments = previous_state.executionFragments.ToArray(); // copy
-
-                ExecutionFragment last = executionFragments[executionFragments.Length - 1];
-                if (last.end == added_work.start)
-                { 
-                    // no interruption, so change last fragment
-                    last.duration += added_work.duration;
-                    executionFragments[executionFragments.Length - 1] = last;
-                }
-                else // interrupted, so create a new fragment
-                    executionFragments = executionFragments.Append(added_work).ToArray();
-            }
-            else
-                executionFragments = [added_work];
+            executionFragments = previous_state.executionFragments.Append(added_work).ToArray();    // with added execution fragment
         }
 
         // spend time doing this job
         public JobState Do(float start_time, float duration)
         {
-            var work = new ExecutionFragment(start_time, duration);
+            var work = new ExecutionFragment(data.id, start_time, duration);
             return new JobState(this, work);
         }
 
@@ -101,11 +85,13 @@ namespace OfflineAlgorithm
 
     public struct ExecutionFragment
     {
+        public int id;
         public float start, duration;
         public float end => start + duration;
 
-        public ExecutionFragment(float start, float duration)
+        public ExecutionFragment(int id, float start, float duration)
         {
+            this.id = id;
             this.start = start;
             this.duration = duration;
         }
