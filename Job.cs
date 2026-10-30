@@ -21,19 +21,19 @@ namespace OfflineAlgorithm
         }
     }
 
-    // this object represents the state of some job for use in constructing a schedule
+    // this object represents the state of some job for use in constructing a schedule.
     // as opposed to the Job object, this object also contains mutable values, used
     // for example to model interruptions, which add processing time
     public struct JobState
     {
-        public readonly JobData data;                   // a pointer to the static job data
-        public float total_processing_time;             // the processing time of a job (including all the incurred interruption penalties)
-        public float elapsed_processing_time;           // the amount of time already dedicated to this job
+        public readonly JobData data;         // a pointer to the static job data
+        public float total_processing_time;   // the processing time of a job (including all the incurred interruption penalties)
+        public float elapsed_processing_time; // the amount of time already dedicated to this job
 
         // derived data
         // how much time a job has left untill it is finished
         public float remaining_processing_time => total_processing_time - elapsed_processing_time;
-        // true if a job is completely finished, false if not
+        // true if a job is completely finished, false if not (handles floating point errors)
         public bool isFinished => remaining_processing_time <= 1e-5f; 
 
 
@@ -59,6 +59,7 @@ namespace OfflineAlgorithm
             return new JobState(this, duration);
         }
 
+        // penalize interruptions exponentially using the interruption penalty
         public void Interrupt()
         {
             this.total_processing_time *= data.interruption_penalty;

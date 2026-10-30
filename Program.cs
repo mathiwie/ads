@@ -14,9 +14,12 @@ namespace OfflineAlgorithm
             JobData[] jobs = ParseInput();
             var empty_schedule = new Schedule(jobs);
     
+            // these bound are used to prune the search tree
             (float lowest_upper_bound, List<ExecutionFragment> solution) = empty_schedule.CalculateUpperBound();
             float lowest_lower_bound = empty_schedule.CalculateLowerBound();
 
+            // we use a priority queue to represent the search tree in order to steer the search
+            // to promising directions
             var Schedules = new PriorityQueue<Schedule, float>();
             Schedules.Enqueue(empty_schedule, lowest_lower_bound);
 
@@ -29,13 +32,12 @@ namespace OfflineAlgorithm
 
                 if (!current.isFinished)
                 {
-                    // if all lower bounds are worse than the lowest upper bound, it means that upper bound is
-                    // the optimal solution
-                    if (lowest_lower_bound >= lowest_upper_bound) 
+                    // if all lower bounds are worse than the lowest upper bound (keeping in mind floating point error),
+                    // it means that upper bound is the optimal solution and we should stop searching
+                    if (lowest_lower_bound >= lowest_upper_bound - 1e-5f)
                         break;
 
-                    // we check whether we've found a better upper bound, which will help with more
-                    // efficient pruning
+                    // we check whether we've found a better upper bound, which will help with more efficient pruning
                     (float upper_bound, var s) = current.CalculateUpperBound();
                     if (upper_bound < lowest_upper_bound) 
                     {
@@ -51,7 +53,6 @@ namespace OfflineAlgorithm
                     // it means that all other schedules have lower bound greater than or equal to this lower bound.
                     // so if this is a finished schedule where (lower bound == cost) it means any other possible
                     // finished schedule has cost of at least this cost, so this is the optimal finished schedule
-
                     solution = current.execution_fragments;
                     lowest_upper_bound = current.cost;
                     break;

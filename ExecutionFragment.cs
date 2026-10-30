@@ -12,6 +12,7 @@ namespace OfflineAlgorithm
         public float start, duration;
         public float end => start + duration;
 
+        // this represents one fragment of work on a job in a schedule
         public ExecutionFragment(int id, float start, float duration)
         {
             this.id = id;
@@ -27,6 +28,8 @@ namespace OfflineAlgorithm
             {
                 ExecutionFragment fragment = chronological_fragments[i];
 
+                // this checks whether sequences of fragments are really one longer segment, 
+                // in which case they are combined and printed as one whole
                 int j = i + 1;
                 while (j < chronological_fragments.Count && chronological_fragments[j].id == fragment.id
                     && MathF.Abs(chronological_fragments[j].start - chronological_fragments[j - 1].end) < 1e-5f)
